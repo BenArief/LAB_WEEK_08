@@ -17,19 +17,16 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import com.example.lab_week_08.worker.FirstWorker
 import com.example.lab_week_08.worker.SecondWorker
+import com.example.lab_week_08.worker.ThirdWorker
 
 class MainActivity : AppCompatActivity() {
-    //Create an instance of a work manager
-    //Work manager manages all your requests and workers
-    //it also sets up the sequence for all your processes
     private val workManager = WorkManager.getInstance(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v,
-                                                                             insets ->
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right,
                 systemBars.bottom)
@@ -73,16 +70,19 @@ class MainActivity : AppCompatActivity() {
                 .INPUT_DATA_ID, id)
             ).build()
 
+        val thirdRequest = OneTimeWorkRequest
+            .Builder(ThirdWorker::class.java)
+            .setConstraints(networkConstraints)
+            .setInputData(getIdInputData(ThirdWorker
+                .INPUT_DATA_ID, id)
+            ).build()
+
         //Sets up the process sequence from the work manager instance
         //Here it starts with FirstWorker, then SecondWorker
         workManager.beginWith(firstRequest)
             .then(secondRequest)
             .enqueue()
 
-
-        //Here we're observing the returned LiveData and getting the
-        //state result of the worker (Can be SUCCEEDED, FAILED, or CANCELLED)
-        //isFinished is used to check if the state is either SUCCEEDED or FAILED
         workManager.getWorkInfoByIdLiveData(firstRequest.id)
             .observe(this) { info ->
                 if (info.state.isFinished) {
@@ -96,6 +96,25 @@ class MainActivity : AppCompatActivity() {
                     launchNotificationService()
                 }
             }
+
+        NotificationService.trackingCompletion.observe(this) {
+            id ->
+            showResult("Process for Notification Channel ID $id is done")
+            workManager.enqueue(thirdRequest)
+        }
+
+        workManager.getWorkInfoByIdLiveData(thirdRequest.id)
+            .observe(this) { info ->
+                if (info.state.isFinished) {
+                    showResult("Third process is done")
+                    launchsecondNotificationService()
+                }
+            }
+
+        NotificationService.trackingCompletion.observe(this) {
+                id ->
+            showResult("Process for Notification Channel ID $id is done")
+        }
     }
 
     //Build the data into the correct format before passing it to the worker as
@@ -112,20 +131,23 @@ class MainActivity : AppCompatActivity() {
 
     //Launch the NotificationService
     private fun launchNotificationService() {
-        //Observe if the service process is done or not
-        //If it is, show a toast with the channel ID in it
-        NotificationService.trackingCompletion.observe(
-            this) { Id ->
-            showResult("Process for Notification Channel ID $Id is done!")
-        }
-
-        //Create an Intent to start the NotificationService
-        //An ID of "001" is also passed as the notification channel ID
         val serviceIntent = Intent(
             this,
             NotificationService::class.java
         ).apply {
             putExtra(EXTRA_ID, "001")
+        }
+
+        //Start the foreground service through the Service Intent
+        ContextCompat.startForegroundService(this, serviceIntent)
+    }
+
+    private fun launchsecondNotificationService() {
+        val serviceIntent = Intent(
+            this,
+            SecondNotificationService::class.java
+        ).apply {
+            putExtra(EXTRA_ID, "002")
         }
 
         //Start the foreground service through the Service Intent
